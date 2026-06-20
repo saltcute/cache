@@ -1,9 +1,7 @@
 import { logger } from "@saltcute/logger";
 import { Cache as MemCache } from "memory-cache";
 import { createClient } from "redis";
-import type { JsonObject } from "./type";
-
-export class Cache<T extends JsonObject | JsonObject[]> {
+export class Cache<T extends object> {
     private logger;
 
     private memCache;
