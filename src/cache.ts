@@ -3,7 +3,7 @@ import { Cache as MemCache } from "memory-cache";
 import { createClient } from "redis";
 import type { JsonObject } from "./type";
 
-export class Cache<T extends JsonObject> {
+export class Cache<T extends JsonObject | JsonObject[]> {
     private logger;
 
     private memCache;
