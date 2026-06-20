@@ -1,0 +1,42 @@
+{
+    "name": "@saltcute/cache",
+    "version": "0.0.0",
+    "description": "Layered cache.",
+    "homepage": "https://github.com/saltcute/cache#readme",
+    "bugs": {
+        "url": "https://github.com/saltcute/cache/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/saltcute/cache.git"
+    },
+    "license": "MIT",
+    "author": "saltcute",
+    "type": "commonjs",
+    "exports": {
+        ".": "./dist/cache.js"
+    },
+    "files": [
+        "dist/"
+    ],
+    "scripts": {
+        "build": "tsc && tsc-alias",
+        "clean": "rimraf dist/*",
+        "format": "biome format --write",
+        "lint": "biome lint --write",
+        "make": "npm run clean && npm run format && npm run lint && npm run build"
+    },
+    "devDependencies": {
+        "@biomejs/biome": "^2.5.0",
+        "@types/node": "^25.9.3",
+        "rimraf": "^6.1.3",
+        "tsc-alias": "^1.8.17",
+        "typescript": "^6.0.3"
+    },
+    "dependencies": {
+        "@saltcute/logger": "^1.0.0",
+        "@types/memory-cache": "^0.2.6",
+        "memory-cache": "^0.2.0",
+        "redis": "^6.0.0"
+    }
+}

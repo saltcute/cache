@@ -1,0 +1,37 @@
+{
+    "compilerOptions": {
+        "declaration": true,
+        "target": "ES2025",
+        "module": "nodenext",
+        "moduleResolution": "node16",
+        "types": ["node"],
+        "lib": [
+            "ES2025"
+        ],
+        "paths": {
+            "@base/*": [ "./src/base/*" ],
+            "@maimai/*": [ "./src/maimai/*" ],
+            "@chunithm/*": [ "./src/chunithm/*" ],
+            "@ongeki/*": [ "./src/ongeki/*" ]
+        },
+        "rootDirs": [
+            "src"
+        ],
+        "rootDir": "./src",
+        "outDir": "./dist",
+        "strict": true,
+        "typeRoots": [
+            "node_modules/@types"
+        ],
+        "esModuleInterop": true,
+        "sourceMap": true,
+        "skipLibCheck": true,
+        "forceConsistentCasingInFileNames": true
+    },
+    "include": [
+        "./src/**/*.ts",
+    ],
+    "exclude": [
+        "./src/tests/*.ts"
+    ]
+}
