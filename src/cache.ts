@@ -13,13 +13,28 @@ export class Cache<T extends object> {
     constructor(private namespace: string) {
         this.logger = logger.child().withPrefix(`[${this.namespace}:cache]`);
         this.memCache = new MemCache<string, T>();
-        this.redisClient = createClient();
-        this.redisClient.on("error", async () => {
-            this.logger.error("Redis connection error, using memory-cache.");
-            this.isRedisAvailable = false;
-            this.redisClient.destroy();
+        this.redisClient = createClient({
+            socket: {
+                reconnectStrategy: (retries) => Math.min(retries * 100, 3000),
+            },
         });
-        this.redisClient.connect();
+        this.redisClient.on("error", async (e) => {
+            if (this.isRedisAvailable) {
+                this.logger
+                    .withError(e)
+                    .error("Redis connection error, using memory-cache.");
+                this.isRedisAvailable = false;
+            }
+        });
+        this.redisClient.connect().catch((e) => {
+            this.logger
+                .withError(e)
+                .error("Redis connection error, using memory-cache.");
+            this.isRedisAvailable = false;
+        });
+        this.redisClient.on("ready", () => {
+            this.isRedisAvailable = true; // recover when the socket comes back
+        });
     }
     private getKey(key: string) {
         return `${this.namespace}:${key}`;
@@ -32,33 +47,42 @@ export class Cache<T extends object> {
      */
     public async get(key: string) {
         const memCacheValue = this.memCache.get(this.getKey(key));
-        if (!memCacheValue && this.isRedisAvailable) {
-            const redisReadBegin = performance.now();
-            const redisValue = await this.redisClient.get(this.getKey(key));
-            const redisReadLapsed = performance.now() - redisReadBegin;
+        try {
+            if (!memCacheValue && this.isRedisAvailable) {
+                const redisReadBegin = performance.now();
+                const redisValue = await this.redisClient.get(this.getKey(key));
+                const redisReadLapsed = performance.now() - redisReadBegin;
 
-            if (redisValue) {
-                try {
-                    const parsed = JSON.parse(redisValue);
-                    this.memCache.put(
-                        this.getKey(key),
-                        parsed,
-                        Cache.REDIS_HOT_KEY_MEM_CACHE_TTL,
-                    );
-                    this.logger.trace(
-                        `GET "${this.getKey(key)}" Redis HIT, took ${redisReadLapsed.toFixed(1)}ms.`,
-                    );
-                    return parsed;
-                } catch {
-                    this.logger.trace(
-                        `GET "${this.getKey(key)}" Redis INVALID, took ${redisReadLapsed.toFixed(1)}ms.`,
-                    );
-                    await this.redisClient.del(this.getKey(key));
-                    return null;
+                if (redisValue) {
+                    try {
+                        const parsed = JSON.parse(redisValue);
+                        this.memCache.put(
+                            this.getKey(key),
+                            parsed,
+                            Cache.REDIS_HOT_KEY_MEM_CACHE_TTL,
+                        );
+                        this.logger.trace(
+                            `GET "${this.getKey(key)}" Redis HIT, took ${redisReadLapsed.toFixed(1)}ms.`,
+                        );
+                        return parsed;
+                    } catch {
+                        this.logger.trace(
+                            `GET "${this.getKey(key)}" Redis INVALID, took ${redisReadLapsed.toFixed(1)}ms.`,
+                        );
+                        await this.redisClient.del(this.getKey(key));
+                        return null;
+                    }
                 }
+            } else {
+                return memCacheValue;
             }
-        } else {
-            return memCacheValue;
+        } catch (e) {
+            this.logger
+                .withError(e)
+                .warn(
+                    `Redis GET failed for "${this.getKey(key)}", falling back to memory-cache.`,
+                );
+            return this.memCache.get(this.getKey(key));
         }
     }
     /**
@@ -76,16 +100,24 @@ export class Cache<T extends object> {
                 value,
                 Cache.REDIS_HOT_KEY_MEM_CACHE_TTL,
             );
-            await this.redisClient.set(
-                this.getKey(key),
-                JSON.stringify(value),
-                {
-                    expiration: {
-                        type: "EX",
-                        value: Math.trunc(ttl / 1000),
+            try {
+                await this.redisClient.set(
+                    this.getKey(key),
+                    JSON.stringify(value),
+                    {
+                        expiration: {
+                            type: "EX",
+                            value: Math.trunc(ttl / 1000),
+                        },
                     },
-                },
-            );
+                );
+            } catch (e) {
+                this.logger
+                    .withError(e)
+                    .warn(
+                        `Redis PUT failed for "${this.getKey(key)}", value kept in memory-cache only.`,
+                    );
+            }
         } else this.memCache.put(this.getKey(key), value, ttl);
         const putLapsed = performance.now() - putBegin;
         this.logger.trace(
