@@ -1,7 +1,7 @@
 import { logger } from "@saltcute/logger";
 import { Cache as MemCache } from "memory-cache";
 import { createClient } from "redis";
-export class Cache<T extends object> {
+export class Cache<T extends object | Buffer> {
     private static readonly REDIS_HOT_KEY_MEM_CACHE_TTL = 1000;
 
     private logger;
@@ -66,11 +66,8 @@ export class Cache<T extends object> {
                         );
                         return parsed;
                     } catch {
-                        this.logger.trace(
-                            `GET "${this.getKey(key)}" Redis INVALID, took ${redisReadLapsed.toFixed(1)}ms.`,
-                        );
-                        await this.redisClient.del(this.getKey(key));
-                        return null;
+                        const parsed = Buffer.from(redisValue, "base64");
+                        return parsed;
                     }
                 }
             } else {
@@ -101,16 +98,29 @@ export class Cache<T extends object> {
                 Cache.REDIS_HOT_KEY_MEM_CACHE_TTL,
             );
             try {
-                await this.redisClient.set(
-                    this.getKey(key),
-                    JSON.stringify(value),
-                    {
-                        expiration: {
-                            type: "EX",
-                            value: Math.trunc(ttl / 1000),
+                if (value instanceof Buffer) {
+                    await this.redisClient.set(
+                        this.getKey(key),
+                        value.toString("base64"),
+                        {
+                            expiration: {
+                                type: "EX",
+                                value: Math.trunc(ttl / 1000),
+                            },
                         },
-                    },
-                );
+                    );
+                } else {
+                    await this.redisClient.set(
+                        this.getKey(key),
+                        JSON.stringify(value),
+                        {
+                            expiration: {
+                                type: "EX",
+                                value: Math.trunc(ttl / 1000),
+                            },
+                        },
+                    );
+                }
             } catch (e) {
                 this.logger
                     .withError(e)
