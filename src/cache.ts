@@ -39,6 +39,8 @@ export class Cache<T extends object | Buffer> {
     private getKey(key: string) {
         return `${this.namespace}:${key}`;
     }
+
+    private inflightGet: Record<string, Promise<unknown> | undefined> = {};
     /**
      * Get a value from cache.
      *
@@ -46,40 +48,52 @@ export class Cache<T extends object | Buffer> {
      * @returns Cache value.
      */
     public async get(key: string) {
-        const memCacheValue = this.memCache.get(this.getKey(key));
-        try {
-            if (!memCacheValue && this.isRedisAvailable) {
-                const redisReadBegin = performance.now();
-                const redisValue = await this.redisClient.get(this.getKey(key));
-                const redisReadLapsed = performance.now() - redisReadBegin;
+        if (this.inflightGet[key] instanceof Promise)
+            return this.inflightGet[key];
+        const promise = (async () => {
+            const memCacheValue = this.memCache.get(this.getKey(key));
+            try {
+                if (!memCacheValue && this.isRedisAvailable) {
+                    const redisReadBegin = performance.now();
+                    const redisValue = await this.redisClient.get(
+                        this.getKey(key),
+                    );
+                    const redisReadLapsed = performance.now() - redisReadBegin;
 
-                if (redisValue) {
-                    try {
-                        const parsed = JSON.parse(redisValue);
-                        this.memCache.put(
-                            this.getKey(key),
-                            parsed,
-                            Cache.REDIS_HOT_KEY_MEM_CACHE_TTL,
-                        );
-                        this.logger.trace(
-                            `GET "${this.getKey(key)}" Redis HIT, took ${redisReadLapsed.toFixed(1)}ms.`,
-                        );
-                        return parsed;
-                    } catch {
-                        const parsed = Buffer.from(redisValue, "base64");
-                        return parsed;
+                    if (redisValue) {
+                        try {
+                            const parsed = JSON.parse(redisValue);
+                            this.memCache.put(
+                                this.getKey(key),
+                                parsed,
+                                Cache.REDIS_HOT_KEY_MEM_CACHE_TTL,
+                            );
+                            this.logger.trace(
+                                `GET "${this.getKey(key)}" Redis HIT, took ${redisReadLapsed.toFixed(1)}ms.`,
+                            );
+                            return parsed;
+                        } catch {
+                            const parsed = Buffer.from(redisValue, "base64");
+                            return parsed;
+                        }
                     }
+                } else {
+                    return memCacheValue;
                 }
-            } else {
-                return memCacheValue;
+            } catch (e) {
+                this.logger
+                    .withError(e)
+                    .warn(
+                        `Redis GET failed for "${this.getKey(key)}", falling back to memory-cache.`,
+                    );
+                return this.memCache.get(this.getKey(key));
             }
-        } catch (e) {
-            this.logger
-                .withError(e)
-                .warn(
-                    `Redis GET failed for "${this.getKey(key)}", falling back to memory-cache.`,
-                );
-            return this.memCache.get(this.getKey(key));
+        })();
+        this.inflightGet[key] = promise;
+        try {
+            return await promise;
+        } finally {
+            this.inflightGet[key] = undefined;
         }
     }
     /**
