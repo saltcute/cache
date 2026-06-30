@@ -1,6 +1,6 @@
 {
     "name": "@saltcute/cache",
-    "version": "1.0.5",
+    "version": "1.0.6",
     "description": "Layered cache.",
     "homepage": "https://github.com/saltcute/cache#readme",
     "bugs": {
